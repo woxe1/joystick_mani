@@ -17,13 +17,13 @@ from pivy import coin
 UDP_HOST = "127.0.0.1"
 UDP_PORT = 50055
 
-YAW_SPEED = 0.035
+YAW_SPEED = 0.055
 PITCH_SPEED = 0.030
 DEADZONE = 0.03
 SMOOTHING = 0.20
 AXIS_LOCK_RATIO = 1.8
 AXIS_LOCK_HARD_DEADZONE = 0.08
-WORLD_UP = coin.SbVec3f(0.0, 0.0, 1.0)
+HORIZONTAL_GAIN = 1.35
 
 _sock = None
 _timer = None
@@ -35,6 +35,10 @@ _STATE_KEY = "_udp_orbit_state_v1"
 
 def _vec(x: float, y: float, z: float) -> coin.SbVec3f:
     return coin.SbVec3f(float(x), float(y), float(z))
+
+
+def _clamp(v: float, lo: float, hi: float) -> float:
+    return lo if v < lo else hi if v > hi else v
 
 
 def _pivot_from_selection_or_scene() -> coin.SbVec3f:
@@ -85,10 +89,10 @@ def _apply_orbit(dx: float, dy: float) -> None:
     up = q.multVec(_vec(0.0, 1.0, 0.0))
     right = q.multVec(_vec(1.0, 0.0, 0.0))
 
-    # Turntable orbit:
-    # - horizontal stick always yaw around world Z
-    # - vertical stick always pitch around camera right axis
-    yaw = coin.SbRotation(WORLD_UP, -dx * YAW_SPEED)
+    # Screen-space orbit:
+    # - horizontal stick rotates around camera up (left/right along current view)
+    # - vertical stick rotates around camera right
+    yaw = coin.SbRotation(up, -dx * YAW_SPEED)
     right_after_yaw = yaw.multVec(right)
     pitch = coin.SbRotation(right_after_yaw, dy * PITCH_SPEED)
     rot = pitch * yaw
@@ -160,7 +164,7 @@ def _tick() -> None:
             y = 0.0
 
         x, y = _axis_lock(x, y)
-        x_in = x
+        x_in = _clamp(x * HORIZONTAL_GAIN, -1.0, 1.0)
         y_in = y
 
     # Always update filter so it decays to zero when controller is at rest.
