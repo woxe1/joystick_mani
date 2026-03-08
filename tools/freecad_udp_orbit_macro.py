@@ -24,6 +24,7 @@ SMOOTHING = 0.20
 AXIS_LOCK_RATIO = 1.8
 AXIS_LOCK_HARD_DEADZONE = 0.03
 HORIZONTAL_GAIN = 1.0
+LOG_ENABLED = False
 
 _sock = None
 _timer = None
@@ -39,6 +40,11 @@ def _vec(x: float, y: float, z: float) -> coin.SbVec3f:
 
 def _clamp(v: float, lo: float, hi: float) -> float:
     return lo if v < lo else hi if v > hi else v
+
+
+def _log(msg: str) -> None:
+    if LOG_ENABLED:
+        print(msg)
 
 
 def _pivot_from_selection_or_scene() -> coin.SbVec3f:
@@ -142,7 +148,7 @@ def _tick() -> None:
         except BlockingIOError:
             break
         except Exception as e:
-            print(f"[UDP orbit] recv error: {e}")
+            _log(f"[UDP orbit] recv error: {e}")
             break
 
         try:
@@ -201,7 +207,7 @@ def stop_udp_orbit() -> None:
             setattr(Gui, _STATE_KEY, None)
     except Exception:
         pass
-    print("[UDP orbit] stopped")
+    _log("[UDP orbit] stopped")
 
 
 def start_udp_orbit() -> None:
@@ -251,8 +257,8 @@ def start_udp_orbit() -> None:
     # Save singleton state so future macro runs can stop this instance.
     setattr(Gui, _STATE_KEY, {"sock": _sock, "timer": _timer})
 
-    print(f"[UDP orbit] listening on {UDP_HOST}:{UDP_PORT}")
-    print("[UDP orbit] call stop_udp_orbit() in Python console to stop")
+    _log(f"[UDP orbit] listening on {UDP_HOST}:{UDP_PORT}")
+    _log("[UDP orbit] call stop_udp_orbit() in Python console to stop")
 
 
 start_udp_orbit()

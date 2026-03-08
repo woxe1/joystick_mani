@@ -24,6 +24,7 @@ UDP_PORT = 50055
 POLL_TIMEOUT_MS = 20
 SEND_INTERVAL_S = 0.02
 DEBUG = True
+LOG_ENABLED = False
 DEADZONE_COUNTS = 6
 BIAS_TRACK_WINDOW = 24
 BIAS_ALPHA = 0.02
@@ -62,6 +63,11 @@ def clamp(v: float, lo: float, hi: float) -> float:
     return lo if v < lo else hi if v > hi else v
 
 
+def log(msg: str) -> None:
+    if LOG_ENABLED:
+        print(msg)
+
+
 def transform_xy(x: float, y: float) -> tuple[float, float]:
     if SWAP_XY:
         x, y = y, x
@@ -94,7 +100,7 @@ def apply_matrix(x: float, y: float, m: tuple[float, float, float, float] | None
 def save_calibration(m: tuple[float, float, float, float]) -> None:
     payload = {"matrix": [float(v) for v in m]}
     CALIB_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"Saved calibration to {CALIB_FILE}")
+    log(f"Saved calibration to {CALIB_FILE}")
 
 
 def load_calibration() -> tuple[float, float, float, float] | None:
@@ -129,8 +135,8 @@ def capture_mean(dev: hid.device, seconds: float = 0.7) -> tuple[float, float]:
 
 
 def run_calibration(dev: hid.device) -> tuple[float, float, float, float]:
-    print("Calibration mode.")
-    print("Press Enter and hold each position steady for ~1 second.")
+    log("Calibration mode.")
+    log("Press Enter and hold each position steady for ~1 second.")
     input("1) Center stick, then Enter...")
     cx, cy = capture_mean(dev)
     input("2) Full RIGHT, hold, then Enter...")
@@ -142,7 +148,7 @@ def run_calibration(dev: hid.device) -> tuple[float, float, float, float]:
     input("5) Full DOWN, hold, then Enter...")
     dx, dy = capture_mean(dev)
 
-    print(
+    log(
         "Captured means: "
         f"C=({cx:+.1f},{cy:+.1f}) "
         f"R=({rx:+.1f},{ry:+.1f}) "
@@ -167,7 +173,7 @@ def run_calibration(dev: hid.device) -> tuple[float, float, float, float]:
     # Inverse of [vr vu] to map raw deltas -> logical axes.
     inv = (vuy / det, -vux / det, -vry / det, vrx / det)
     save_calibration(inv)
-    print(f"Calibration done. Matrix={inv}")
+    log(f"Calibration done. Matrix={inv}")
     return inv
 
 
@@ -205,20 +211,20 @@ def main() -> None:
     dev.set_nonblocking(True)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    print(f"Connected HID {VID:04X}:{PID:04X} path={selected['path']}")
-    print(f"Sending UDP to {UDP_HOST}:{UDP_PORT}")
-    print("Auto-bias compensation enabled")
+    log(f"Connected HID {VID:04X}:{PID:04X} path={selected['path']}")
+    log(f"Sending UDP to {UDP_HOST}:{UDP_PORT}")
+    log("Auto-bias compensation enabled")
     matrix = None
     if args.calibrate:
         matrix = run_calibration(dev)
     elif args.use_calibration:
         matrix = load_calibration()
         if matrix is not None:
-            print(f"Using saved calibration matrix: {matrix}")
+            log(f"Using saved calibration matrix: {matrix}")
         else:
-            print("No valid calibration file found. Running without matrix.")
+            log("No valid calibration file found. Running without matrix.")
     else:
-        print("Running without calibration matrix.")
+        log("Running without calibration matrix.")
 
     last_send = 0.0
     bias_x = 0.0
@@ -278,7 +284,7 @@ def main() -> None:
             payload = f"{x:.4f} {y:.4f}\n".encode("ascii")
             sock.sendto(payload, (UDP_HOST, UDP_PORT))
 
-            if DEBUG:
+            if DEBUG and LOG_ENABLED:
                 print(
                     f"hid=({x_i:4d},{y_i:4d}) "
                     f"bias=({bias_x:+.2f},{bias_y:+.2f}) "
@@ -289,7 +295,7 @@ def main() -> None:
     finally:
         dev.close()
         sock.close()
-        print("Bridge stopped.")
+        log("Bridge stopped.")
 
 
 if __name__ == "__main__":
