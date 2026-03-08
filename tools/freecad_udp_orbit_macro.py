@@ -22,8 +22,8 @@ PITCH_SPEED = 0.030
 DEADZONE = 0.03
 SMOOTHING = 0.20
 AXIS_LOCK_RATIO = 1.8
-AXIS_LOCK_HARD_DEADZONE = 0.08
-HORIZONTAL_GAIN = 1.35
+AXIS_LOCK_HARD_DEADZONE = 0.03
+HORIZONTAL_GAIN = 1.0
 
 _sock = None
 _timer = None
@@ -94,7 +94,7 @@ def _apply_orbit(dx: float, dy: float) -> None:
     # - vertical stick rotates around camera right
     yaw = coin.SbRotation(up, -dx * YAW_SPEED)
     right_after_yaw = yaw.multVec(right)
-    pitch = coin.SbRotation(right_after_yaw, dy * PITCH_SPEED)
+    pitch = coin.SbRotation(right_after_yaw, -dy * PITCH_SPEED)
     rot = pitch * yaw
     new_rel = rot.multVec(rel)
 
