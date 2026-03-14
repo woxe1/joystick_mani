@@ -8,10 +8,18 @@ How to use:
 """
 
 import socket
+import warnings
 
 import FreeCAD as App
 import FreeCADGui as Gui
 from PySide2 import QtCore
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"builtin type SwigPyObject has no __module__ attribute",
+    category=DeprecationWarning,
+)
+
 from pivy import coin
 
 UDP_HOST = "127.0.0.1"
@@ -24,6 +32,7 @@ SMOOTHING = 0.20
 AXIS_LOCK_RATIO = 1.8
 AXIS_LOCK_HARD_DEADZONE = 0.03
 HORIZONTAL_GAIN = 1.0
+INVERT_HORIZONTAL = True
 LOG_ENABLED = False
 
 _sock = None
@@ -170,6 +179,8 @@ def _tick() -> None:
             y = 0.0
 
         x, y = _axis_lock(x, y)
+        if INVERT_HORIZONTAL:
+            x = -x
         x_in = _clamp(x * HORIZONTAL_GAIN, -1.0, 1.0)
         y_in = y
 

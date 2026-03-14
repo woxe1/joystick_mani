@@ -25,6 +25,7 @@ POLL_TIMEOUT_MS = 20
 SEND_INTERVAL_S = 0.02
 DEBUG = True
 LOG_ENABLED = False
+RECONNECT_INTERVAL_S = 1.0
 DEADZONE_COUNTS = 6
 BIAS_TRACK_WINDOW = 24
 BIAS_ALPHA = 0.02
@@ -190,34 +191,40 @@ def shape_axis(v: float) -> float:
     return out if v >= 0.0 else -out
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--calibrate", action="store_true", help="Run interactive axis calibration and save matrix")
-    parser.add_argument("--use-calibration", action="store_true", help="Apply saved calibration matrix")
-    args = parser.parse_args()
-
+def select_device() -> dict | None:
     devices = hid.enumerate(VID, PID)
     if not devices:
-        raise RuntimeError(f"HID {VID:04X}:{PID:04X} not found")
+        return None
 
     selected = devices[0]
     for d in devices:
         if d.get("usage_page") == 0x01 and d.get("usage") == 0x08:
             selected = d
             break
+    return selected
+
+
+def open_device() -> tuple[hid.device, dict]:
+    selected = select_device()
+    if selected is None:
+        raise RuntimeError(f"HID {VID:04X}:{PID:04X} not found")
 
     dev = hid.device()
     dev.open_path(selected["path"])
     dev.set_nonblocking(True)
+    return dev, selected
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--calibrate", action="store_true", help="Run interactive axis calibration and save matrix")
+    parser.add_argument("--use-calibration", action="store_true", help="Apply saved calibration matrix")
+    args = parser.parse_args()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    log(f"Connected HID {VID:04X}:{PID:04X} path={selected['path']}")
     log(f"Sending UDP to {UDP_HOST}:{UDP_PORT}")
-    log("Auto-bias compensation enabled")
     matrix = None
-    if args.calibrate:
-        matrix = run_calibration(dev)
-    elif args.use_calibration:
+    if args.use_calibration:
         matrix = load_calibration()
         if matrix is not None:
             log(f"Using saved calibration matrix: {matrix}")
@@ -226,13 +233,47 @@ def main() -> None:
     else:
         log("Running without calibration matrix.")
 
+    dev = None
+    connected_path = None
+    announced_wait = False
     last_send = 0.0
     bias_x = 0.0
     bias_y = 0.0
     rest_since = 0.0
     try:
         while True:
-            data = dev.read(64, POLL_TIMEOUT_MS)
+            if dev is None:
+                try:
+                    dev, selected = open_device()
+                    connected_path = selected["path"]
+                    announced_wait = False
+                    bias_x = 0.0
+                    bias_y = 0.0
+                    rest_since = 0.0
+                    last_send = 0.0
+                    log(f"Connected HID {VID:04X}:{PID:04X} path={connected_path}")
+                    log("Auto-bias compensation enabled")
+                    if args.calibrate:
+                        matrix = run_calibration(dev)
+                except Exception as exc:
+                    if not announced_wait:
+                        log(f"HID unavailable, waiting for reconnect: {exc}")
+                        announced_wait = True
+                    time.sleep(RECONNECT_INTERVAL_S)
+                    continue
+
+            try:
+                data = dev.read(64, POLL_TIMEOUT_MS)
+            except Exception as exc:
+                log(f"HID read failed, reconnecting: {exc}")
+                try:
+                    dev.close()
+                except Exception:
+                    pass
+                dev = None
+                connected_path = None
+                continue
+
             if not data:
                 continue
 
@@ -293,7 +334,8 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        dev.close()
+        if dev is not None:
+            dev.close()
         sock.close()
         log("Bridge stopped.")
 
